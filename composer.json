@@ -10,17 +10,18 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "ext-openssl": "*",
         "firebase/php-jwt": "^6.11",
         "inertiajs/inertia-laravel": "2.x-dev",
         "intervention/image-laravel": "^1.5",
         "laravel/framework": "^12.0",
         "laravel/passport": "^13.1",
         "laravel/tinker": "^2.10.1",
+        "midtrans/midtrans-php": "^2.6",
         "predis/predis": "^3.2",
         "spatie/laravel-medialibrary": "^11.14",
         "spatie/laravel-permission": "*",
-        "tightenco/ziggy": "^2.4",
-        "ext-openssl": "*"
+        "tightenco/ziggy": "^2.4"
     },
     "require-dev": {
         "barryvdh/laravel-debugbar": "^3.16",

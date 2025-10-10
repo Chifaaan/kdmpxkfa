@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\SsoController;
 use App\Http\Controllers\Api\SsoFrontendController;
+use App\Http\Controllers\Api\PaymentController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -44,6 +45,11 @@ Route::prefix('v1')->middleware(['auth:api'])->group(function () {
         Route::get('me', [SsoController::class, 'me']);
         Route::post('logout', [SsoController::class, 'logout']);
     });
+
+    Route::middleware('auth:api')->group(function () {
+        Route::post('orders/{order}/pay', [PaymentController::class, 'createTransaction'])->name('payment.create');
+    });
+    Route::post('/payment/notification', [PaymentController::class, 'handleNotification'])->name('payment.notification');
 
     // Onboarding routes (accessible even without completed onboarding)
     //    Route::prefix('onboarding')->group(function () {

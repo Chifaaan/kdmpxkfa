@@ -364,7 +364,7 @@ class CartController extends Controller
             if ($orderingUser && $orderingUser->apotek_id) {
                 // Find all users who are admins for this specific apotek (pharmacy admins)
                 $pharmacyAdmins = User::where('apotek_id', $orderingUser->apotek_id)
-                    ->whereHas('roles', function($query) {
+                    ->whereHas('roles', function ($query) {
                         $query->where('name', RoleEnum::ADMIN_APOTEK->value); // Only admin-apotek role gets notifications
                     })
                     ->get();
@@ -382,7 +382,7 @@ class CartController extends Controller
             \DB::commit();
 
             // Redirect to order confirmation page
-            return redirect()->route('order.complete', $order->id)->with('success', 'Order placed successfully!');
+            return redirect()->route('ecommerce.paytest', $order->id)->with('success', 'Order placed successfully!');
         } catch (ValidationException $e) {
             // Re-throw validation exceptions as they are already properly formatted
             \DB::rollBack();
