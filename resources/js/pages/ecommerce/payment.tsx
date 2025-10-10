@@ -37,6 +37,7 @@ interface PaymentProps {
 
 export default function PaymentPage({ billing, shipping }: PaymentProps) {
     const [sourceOfFund] = useState('pinjaman');
+    const [paymentMethod, setPaymentMethod] = useState('kredit-koperasi'); // 'kredit-koperasi' or 'payment-gateway'
     const [paymentType, setPaymentType] = useState('cad');
     const [isProcessing, setIsProcessing] = useState(false);
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -111,7 +112,7 @@ export default function PaymentPage({ billing, shipping }: PaymentProps) {
             window.location.href = route('cart');
         } else {
             const parsedCart: CartItemOrPackage[] = JSON.parse(storedCart);
-            
+
             const processedCart = processCartItems(parsedCart);
             setCartItems(processedCart);
         }
@@ -127,44 +128,91 @@ export default function PaymentPage({ billing, shipping }: PaymentProps) {
 
             const processedCart = processCartItems(parsedCart);
 
-            router.post(
-                route('payment.process'),
-                {
-                    source_of_fund: sourceOfFund,
-                    payment_type: paymentType,
-                    cart: processedCart, // Inertia.js should handle this automatically
-                },
-                {
-                    onSuccess: () => {
-                        localStorage.removeItem('cart');
+            // Determine the final payment type based on the selected payment method
+            let finalPaymentType = paymentType;
+            if (paymentMethod === 'payment-gateway') {
+                finalPaymentType = 'va'; // Use virtual account for payment gateway
+            }
+
+            // Route to different endpoints based on payment method
+            if (paymentMethod === 'payment-gateway') {
+                // Call payment gateway endpoint
+                router.post(
+                    route('payment.gateway'),
+                    {
+                        source_of_fund: sourceOfFund,
+                        cart: processedCart, // Inertia.js should handle this automatically
                     },
-                    onError: (errors) => {
-                        if (errors.credit_limit_error) {
-                            toast.error('Saldo Kredit Anda Kurang!, Cek kembali Saldo Kredit yang Anda miliki!', {
-                                duration: 5000,
-                            });
-                        } else if (errors.mapping_error) {
-                            toast.error('Koperasi belum dimapping dengan Apotek KF, Silakan hubungi administrator.', {
-                                duration: 5000,
-                            });
-                        } else if (errors.generic_payment_error) {
-                            toast.error('A technical error occurred. Our team has been notified. Please try again later.', {
-                                duration: 5000,
-                            });
-                        } else {
-                            toast.error('Payment Failed', {
-                                description: 'An unknown error occurred. Please check your details and try again.',
-                                duration: 10000,
-                            });
-                        }
+                    {
+                        onSuccess: () => {
+                            localStorage.removeItem('cart');
+                        },
+                        onError: (errors) => {
+                            if (errors.credit_limit_error) {
+                                toast.error('Saldo Kredit Anda Kurang!, Cek kembali Saldo Kredit yang Anda miliki!', {
+                                    duration: 5000,
+                                });
+                            } else if (errors.mapping_error) {
+                                toast.error('Koperasi belum dimapping dengan Apotek KF, Silakan hubungi administrator.', {
+                                    duration: 5000,
+                                });
+                            } else if (errors.generic_payment_error) {
+                                toast.error('A technical error occurred. Our team has been notified. Please try again later.', {
+                                    duration: 5000,
+                                });
+                            } else {
+                                toast.error('Payment Failed', {
+                                    description: 'An unknown error occurred. Please check your details and try again.',
+                                    duration: 10000,
+                                });
+                            }
+                        },
+                        onFinish: () => {
+                            setIsProcessing(false);
+                        },
                     },
-                    onFinish: () => {
-                        setIsProcessing(false);
+                );
+            } else {
+                // Call regular payment endpoint for Kredit Koperasi
+                router.post(
+                    route('payment.process'),
+                    {
+                        source_of_fund: sourceOfFund,
+                        payment_type: finalPaymentType,
+                        cart: processedCart, // Inertia.js should handle this automatically
                     },
-                },
-            );
+                    {
+                        onSuccess: () => {
+                            localStorage.removeItem('cart');
+                        },
+                        onError: (errors) => {
+                            if (errors.credit_limit_error) {
+                                toast.error('Saldo Kredit Anda Kurang!, Cek kembali Saldo Kredit yang Anda miliki!', {
+                                    duration: 5000,
+                                });
+                            } else if (errors.mapping_error) {
+                                toast.error('Koperasi belum dimapping dengan Apotek KF, Silakan hubungi administrator.', {
+                                    duration: 5000,
+                                });
+                            } else if (errors.generic_payment_error) {
+                                toast.error('A technical error occurred. Our team has been notified. Please try again later.', {
+                                    duration: 5000,
+                                });
+                            } else {
+                                toast.error('Payment Failed', {
+                                    description: 'An unknown error occurred. Please check your details and try again.',
+                                    duration: 10000,
+                                });
+                            }
+                        },
+                        onFinish: () => {
+                            setIsProcessing(false);
+                        },
+                    },
+                );
+            }
         },
-        [sourceOfFund, paymentType, processCartItems],
+        [sourceOfFund, paymentMethod, paymentType, processCartItems],
     );
 
     // Use useMemo to calculate totals only when cartItems change
@@ -209,34 +257,29 @@ export default function PaymentPage({ billing, shipping }: PaymentProps) {
                             </CardHeader>
                             <CardContent>
                                 <form id="payment-form" onSubmit={handleSubmit} className="space-y-4">
-                                    {/* ... Mandiri and BCA divs ... */}
-                                    <div className="flex cursor-not-allowed items-center justify-between rounded-xl border-2 border-border p-4 opacity-50">
+                                    {/* Payment Gateway option */}
+                                    <div
+                                        className={`flex cursor-pointer items-center justify-between rounded-xl border-2 p-4 transition-all duration-200 ${
+                                            paymentMethod === 'payment-gateway' ? 'border-primary bg-primary/10' : 'border-border'
+                                        }`}
+                                        onClick={() => setPaymentMethod('payment-gateway')}
+                                    >
                                         <div className="flex items-center gap-3">
-                                            <div className="rounded-full bg-yellow-400 p-3">
-                                                <CreditCard className="h-6 w-6 text-white" />
+                                            <div className="rounded-full bg-secondary p-3">
+                                                <CreditCard className="h-6 w-6 text-secondary-foreground" />
                                             </div>
                                             <div>
-                                                <h3 className="font-semibold text-card-foreground">Bank Mandiri</h3>
-                                                <p className="text-sm text-muted-foreground">Virtual Account</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex cursor-not-allowed items-center justify-between rounded-xl border-2 border-border p-4 opacity-50">
-                                        <div className="flex items-center gap-3">
-                                            <div className="rounded-full bg-blue-500 p-3">
-                                                <CreditCard className="h-6 w-6 text-white" />
-                                            </div>
-                                            <div>
-                                                <h3 className="font-semibold text-card-foreground">Bank BCA</h3>
+                                                <h3 className="font-semibold text-card-foreground">Payment Gateway</h3>
                                                 <p className="text-sm text-muted-foreground">Virtual Account</p>
                                             </div>
                                         </div>
                                     </div>
 
                                     <div
-                                        className={`flex flex-col gap-3 rounded-xl border-2 p-4 transition-all duration-200 ${
-                                            sourceOfFund === 'pinjaman' ? 'border-primary bg-primary/10' : 'border-border'
+                                        className={`flex cursor-pointer flex-col gap-3 rounded-xl border-2 p-4 transition-all duration-200 ${
+                                            paymentMethod === 'kredit-koperasi' ? 'border-primary bg-primary/10' : 'border-border'
                                         }`}
+                                        onClick={() => setPaymentMethod('kredit-koperasi')}
                                     >
                                         <div className="flex items-center gap-3">
                                             <div className="rounded-full bg-secondary p-3">
@@ -255,9 +298,6 @@ export default function PaymentPage({ billing, shipping }: PaymentProps) {
                                                 </SelectTrigger>
                                                 <SelectContent>
                                                     <SelectItem value="cad">Cash after Delivery</SelectItem>
-                                                    <SelectItem value="va" disabled>
-                                                        Virtual Account
-                                                    </SelectItem>
                                                     <SelectItem value="top30" disabled>
                                                         Term of Payment 30 Days
                                                     </SelectItem>

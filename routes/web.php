@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\SsoController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Auth\OnboardingController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Ecommerce\PaymentController;
 use App\Http\Controllers\Ecommerce\CartController;
 use App\Http\Controllers\Ecommerce\HistoryController;
 use App\Http\Controllers\Ecommerce\OrderController;
@@ -91,7 +92,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/payment', [CartController::class, 'paymentForm'])->name('payment');
     Route::post('/checkout/process', [CartController::class, 'processCheckout'])->name('checkout.process');
     Route::post('/payment/process', [CartController::class, 'processPayment'])->name('payment.process');
+    Route::post('/payment/gateway', [PaymentController::class, 'processPaymentGateway'])->name('payment.gateway');
     Route::get('/order-complete/{order}', [CartController::class, 'orderComplete'])->name('order.complete');
+    Route::get('/ecommerce/paytest/{order}', [PaymentController::class, 'index'])->name('ecommerce.paytest');
 
     // Grouping rute History untuk konsistensi
     Route::prefix('orders/history')->name('history.')->group(function () {

@@ -20,7 +20,15 @@ return [
         env('FRONTEND_URL', 'http://localhost:3000'),
         env('SSO_DIGIKOPERASI_URL', 'https://koperasi.berasumkm.id'),
         'https://images.tokopedia.net',
-        'https://prd-app-kf-ehealth-production-s3-ap-southeast-1.imgix.net'
+        'https://prd-app-kf-ehealth-production-s3-ap-southeast-1.imgix.net',
+        'https://app.sandbox.midtrans.com',
+        'https://js-agent.newrelic.com',
+        'https://midtrans.com',
+        'https://api.midtrans.com',
+        'https://app.midtrans.com',
+        'https://snap.midtrans.com',
+        'https://app.midtrans.com/snap/v1',
+        'https://app.midtrans.com/snap/v2',
     ],
 
     'allowed_origins_patterns' => [],

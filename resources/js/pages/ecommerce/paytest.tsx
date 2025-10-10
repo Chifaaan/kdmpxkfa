@@ -1,59 +1,80 @@
 import { usePage } from '@inertiajs/react';
 import React, { useEffect, useState } from 'react';
 
-interface Order {
-    id: number;
-    transaction_number: string;
-    total_price: number;
-    status: string;
-    created_at: string;
-}
-
 interface PageProps {
-    snapToken: string;
-    order: Order;
-    orderId: string;
-    grossAmount: number;
-    clientKey: string;
-    isProduction: boolean;
+    cartSessionId?: string;
+    totalAmount?: number;
 }
 
 const PayTest: React.FC = () => {
-    const { snapToken, order, orderId, grossAmount, clientKey, isProduction } = usePage<PageProps>().props;
+    const { cartSessionId, totalAmount } = usePage<PageProps>().props;
     const [loading, setLoading] = useState<boolean>(true);
+    const [snapToken, setSnapToken] = useState<string | null>(null);
+    const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
+    const [transactionNumber, setTransactionNumber] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (snapToken) {
+        if (cartSessionId && !snapToken) {
+            // Fetch the snap token from the backend
+            fetch(`/ecommerce/paytest/${cartSessionId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.snap_token) {
+                    setSnapToken(data.snap_token);
+                    setRedirectUrl(data.redirect_url);
+                    setTransactionNumber(data.transaction_number);
+                    // Check if Midtrans Snap script is already loaded
+                    if (typeof window !== 'undefined' && (window as any).snap) {
+                        initializeMidtrans(data.snap_token);
+                    } else {
+                        loadMidtransScript(data.snap_token);
+                    }
+                } else {
+                    throw new Error(data.error || 'Failed to get snap token');
+                }
+            })
+            .catch(err => {
+                setError(err.message);
+                setLoading(false);
+            });
+        } else if (snapToken) {
             // Check if Midtrans Snap script is already loaded
             if (typeof window !== 'undefined' && (window as any).snap) {
-                initializeMidtrans();
+                initializeMidtrans(snapToken);
             } else {
-                loadMidtransScript();
+                loadMidtransScript(snapToken);
             }
         } else {
-            setError('No Snap token available');
+            setError('No cart session ID available');
             setLoading(false);
         }
-    }, [snapToken]);
+    }, [cartSessionId, snapToken]);
 
-    const initializeMidtrans = () => {
+    const initializeMidtrans = (token: string) => {
         // @ts-ignore
         if (typeof window !== 'undefined' && window.snap) {
             // @ts-ignore
             window.snap.show({
-                token: snapToken,
+                token: token,
                 onSuccess: function (result: any) {
                     console.log('Payment Success!', result);
                     alert('Payment Success!');
                     // Redirect to order completion page
-                    window.location.href = `/ecommerce/order-completed?order_id=${orderId}`;
+                    window.location.href = `/order-complete?transaction_number=${transactionNumber}`;
                 },
                 onPending: function (result: any) {
                     console.log('Payment Pending!', result);
                     alert('Payment Pending, please complete the payment');
                     // Redirect to order completion page to track pending order
-                    window.location.href = `/ecommerce/order-completed?order_id=${orderId}`;
+                    window.location.href = `/order-complete?transaction_number=${transactionNumber}`;
                 },
                 onError: function (result: any) {
                     console.log('Payment Error!', result);
@@ -71,11 +92,11 @@ const PayTest: React.FC = () => {
         }
     };
 
-    const loadMidtransScript = () => {
+    const loadMidtransScript = (token: string) => {
         const script = document.createElement('script');
-        // Use props passed from backend with fallback to environment variable
-        const midtransClientKey = clientKey || import.meta.env.VITE_REACT_APP_MIDTRANS_CLIENT_KEY || '';
-        const isProd = isProduction || import.meta.env.VITE_MIDTRANS_IS_PRODUCTION === 'true';
+        // Use environment variable for client key
+        const midtransClientKey = import.meta.env.VITE_REACT_APP_MIDTRANS_CLIENT_KEY || '';
+        const isProd = import.meta.env.VITE_MIDTRANS_IS_PRODUCTION === 'true';
         script.src = isProd ? `https://app.midtrans.com/snap/snap.js` : `https://app.sandbox.midtrans.com/snap/snap.js`;
         script.setAttribute('data-client-key', midtransClientKey);
 
@@ -83,18 +104,18 @@ const PayTest: React.FC = () => {
             if (typeof window !== 'undefined' && (window as any).snap) {
                 // @ts-ignore
                 (window as any).snap.show({
-                    token: snapToken,
+                    token: token,
                     onSuccess: function (result: any) {
                         console.log('Payment Success!', result);
                         alert('Payment Success!');
                         // Redirect to order completion page
-                        window.location.href = `/ecommerce/order-completed?order_id=${orderId}`;
+                        window.location.href = `/order-complete?transaction_number=${transactionNumber}`;
                     },
                     onPending: function (result: any) {
                         console.log('Payment Pending!', result);
                         alert('Payment Pending, please complete the payment');
                         // Redirect to order completion page to track pending order
-                        window.location.href = `/ecommerce/order-completed?order_id=${orderId}`;
+                        window.location.href = `/order-complete?transaction_number=${transactionNumber}`;
                     },
                     onError: function (result: any) {
                         console.log('Payment Error!', result);
@@ -128,12 +149,12 @@ const PayTest: React.FC = () => {
                       onSuccess: function (result: any) {
                           console.log('Payment Success!', result);
                           alert('Payment Success!');
-                          window.location.href = `/ecommerce/order-completed?order_id=${orderId}`;
+                          window.location.href = `/order-complete?transaction_number=${transactionNumber}`;
                       },
                       onPending: function (result: any) {
                           console.log('Payment Pending!', result);
                           alert('Payment Pending, please complete the payment');
-                          window.location.href = `/ecommerce/order-completed?order_id=${orderId}`;
+                          window.location.href = `/order-complete?transaction_number=${transactionNumber}`;
                       },
                       onError: function (result: any) {
                           console.log('Payment Error!', result);
@@ -178,13 +199,10 @@ const PayTest: React.FC = () => {
 
                 <div className="mb-4">
                     <p className="text-gray-700">
-                        <span className="font-semibold">Order ID:</span> {orderId}
+                        <span className="font-semibold">Transaction Number:</span> {transactionNumber}
                     </p>
                     <p className="text-gray-700">
-                        <span className="font-semibold">Amount:</span> IDR {grossAmount.toLocaleString()}
-                    </p>
-                    <p className="text-gray-700">
-                        <span className="font-semibold">Status:</span> {order.status}
+                        <span className="font-semibold">Amount:</span> IDR {totalAmount?.toLocaleString()}
                     </p>
                 </div>
 
