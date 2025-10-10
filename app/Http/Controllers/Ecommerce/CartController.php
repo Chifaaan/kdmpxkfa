@@ -382,7 +382,7 @@ class CartController extends Controller
             \DB::commit();
 
             // Redirect to order confirmation page
-            return redirect()->route('ecommerce.paytest', $order->id)->with('success', 'Order placed successfully!');
+            return redirect()->route('order.complete', $order->id)->with('success', 'Order placed successfully!');
         } catch (ValidationException $e) {
             // Re-throw validation exceptions as they are already properly formatted
             \DB::rollBack();

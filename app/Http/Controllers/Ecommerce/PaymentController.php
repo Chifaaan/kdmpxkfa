@@ -37,7 +37,7 @@ class PaymentController extends Controller
         foreach ($orderItems as $item) {
             $item_details[] = [
                 'id' => $item->product_id,
-                'price' => (int) $item->unit_price,
+                'price' => round($item->unit_price * $item->content * 1.11),
                 'quantity' => $item->quantity,
                 'name' => $item->product->name,
             ];
@@ -50,7 +50,6 @@ class PaymentController extends Controller
             ],
             'customer_details' => [
                 'first_name' => $billingData['first_name'] ?? $order->user->first_name,
-                'last_name' => $billingData['last_name'] ?? $order->user->last_name,
                 'email' => $billingData['email'] ?? $order->user->email,
                 'phone' => $billingData['phone'] ?? $order->user->phone,
             ],
@@ -58,9 +57,8 @@ class PaymentController extends Controller
         ];
 
         try {
-            $paymentUrl = Snap::createTransaction($params)->redirect_url;
-            return redirect()->away($paymentUrl);
-            // dd($paymentUrl);
+            $snapToken = Snap::getSnapToken($params);
+            return response()->json(['token' => $snapToken]);
 
         } catch (\Exception $e) {
             return response()->json(['error' => $e->getMessage()], 500);
