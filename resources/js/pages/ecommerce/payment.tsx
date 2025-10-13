@@ -146,7 +146,7 @@ export default function PaymentPage({ billing, shipping }: PaymentProps) {
                     },
                     {
                         onSuccess: () => {
-                            localStorage.removeItem('cart');
+                            // localStorage.removeItem('cart');
                         },
                         onError: (errors) => {
                             if (errors.credit_limit_error) {
@@ -184,7 +184,7 @@ export default function PaymentPage({ billing, shipping }: PaymentProps) {
                     },
                     {
                         onSuccess: () => {
-                            localStorage.removeItem('cart');
+                            // localStorage.removeItem('cart');
                         },
                         onError: (errors) => {
                             if (errors.credit_limit_error) {
@@ -310,11 +310,11 @@ export default function PaymentPage({ billing, shipping }: PaymentProps) {
                                     <div className="hidden pt-4 lg:block">
                                         {paymentMethod === 'payment-gateway' ? (
                                             <PaymentButton
-                                                orderId={42} // Replace with your actual order ID from backend or state
+                                                orderId={44} // Replace with your actual order ID from backend or state
                                                 disabled={isProcessing}
                                                 onSuccess={(result) => {
                                                     toast.success('Payment successful!', { description: 'Your order is being processed.' });
-                                                    localStorage.removeItem('cart');
+                                                    // localStorage.removeItem('cart');
                                                     router.visit(route('orders.show', { id: result.order_id }));
                                                 }}
                                                 onError={(err) => {

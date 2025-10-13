@@ -17,6 +17,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use Midtrans\Config;
+use Midtrans\Snap;
 
 use function Pest\Laravel\json;
 
@@ -289,14 +291,14 @@ class CartController extends Controller
             }, $cartItems));
 
             // Validate credit limit using tenant_id
-            $creditValidation = $transactionService->validateCreditLimit($user->tenant_id, $totalAmount);
+            // $creditValidation = $transactionService->validateCreditLimit($user->tenant_id, $totalAmount);
 
-            if (!$creditValidation['valid']) {
-                // Handle credit limit exceeded
-                throw ValidationException::withMessages([
-                    'credit_limit_error' => $creditValidation['message'],
-                ]);
-            }
+            // if (!$creditValidation['valid']) {
+            //     // Handle credit limit exceeded
+            //     throw ValidationException::withMessages([
+            //         'credit_limit_error' => $creditValidation['message'],
+            //     ]);
+            // }
 
             \DB::beginTransaction();
 
@@ -375,14 +377,58 @@ class CartController extends Controller
                 }
             }
 
+            // Set Midtrans configuration
+            Config::$serverKey = config('midtrans.server_key');
+            Config::$isProduction = config('midtrans.is_production');
+            Config::$isSanitized = config('midtrans.is_sanitized');
+            Config::$is3ds = config('midtrans.is_3ds');
+
+            $billingData = session('checkout.billing');
+
+            $orderItems = $order->orderItems;
+            $item_details = [];
+            foreach ($orderItems as $item) {
+                $item_details[] = [
+                    'id' => $item->product_id,
+                    'price' => round($item->unit_price * $item->content * 1.11),
+                    'quantity' => $item->quantity,
+                    'name' => $item->product->name,
+                ];
+            }
+
+            $params = [
+                'transaction_details' => [
+                    'order_id' => $order->transaction_number,
+                    'gross_amount' => $order->total_price,
+                ],
+                'customer_details' => [
+                    'first_name' => $billingData['first_name'] ?? $order->user->first_name,
+                    'email' => $billingData['email'] ?? $order->user->email,
+                    'phone' => $billingData['phone'] ?? $order->user->phone,
+                ],
+                'item_details' => $item_details
+            ];
+            $snapToken = Snap::getSnapToken($params);
+            try {
+                return Inertia::render('ecommerce/paytest', [
+                    'orderId' => $order->id,
+                    'snapToken' => $snapToken,
+                    'transaction_number' => $order->transaction_number,
+                    'order' => $order
+                ]);
+
+            } catch (\Exception $e) {
+                return response()->json(['error' => $e->getMessage()], 500);
+            }
+
             // Clear cart and checkout data from session after successful payment
             // Log::debug("message", session('cart'));
             // // session()->forget(['cart', 'checkout.billing', 'checkout.shipping']);
 
-            \DB::commit();
+            // \DB::commit();
 
-            // Redirect to order confirmation page
-            return redirect()->route('order.complete', $order->id)->with('success', 'Order placed successfully!');
+            // // Redirect to order confirmation page
+            // return redirect()->route('order.complete', $order->id)->with('success', 'Order placed successfully!');
         } catch (ValidationException $e) {
             // Re-throw validation exceptions as they are already properly formatted
             \DB::rollBack();
