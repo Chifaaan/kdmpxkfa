@@ -1,4 +1,3 @@
-import PaymentButton from '@/components/PaymentButton';
 import PriceDisplay from '@/components/priceDisplay';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -146,7 +145,7 @@ export default function PaymentPage({ billing, shipping }: PaymentProps) {
                     },
                     {
                         onSuccess: () => {
-                            // localStorage.removeItem('cart');
+                            localStorage.removeItem('cart');
                         },
                         onError: (errors) => {
                             if (errors.credit_limit_error) {
@@ -184,7 +183,7 @@ export default function PaymentPage({ billing, shipping }: PaymentProps) {
                     },
                     {
                         onSuccess: () => {
-                            // localStorage.removeItem('cart');
+                            localStorage.removeItem('cart');
                         },
                         onError: (errors) => {
                             if (errors.credit_limit_error) {
@@ -308,28 +307,13 @@ export default function PaymentPage({ billing, shipping }: PaymentProps) {
                                     </div>
 
                                     <div className="hidden pt-4 lg:block">
-                                        {paymentMethod === 'payment-gateway' ? (
-                                            <PaymentButton
-                                                orderId={44} // Replace with your actual order ID from backend or state
-                                                disabled={isProcessing}
-                                                onSuccess={(result) => {
-                                                    toast.success('Payment successful!', { description: 'Your order is being processed.' });
-                                                    // localStorage.removeItem('cart');
-                                                    router.visit(route('orders.show', { id: result.order_id }));
-                                                }}
-                                                onError={(err) => {
-                                                    toast.error('Payment failed', { description: err.message || 'Please try again.' });
-                                                }}
-                                            />
-                                        ) : (
-                                            <button
-                                                type="submit"
-                                                disabled={isProcessing}
-                                                className="w-full rounded-md bg-primary px-4 py-3 text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                                            >
-                                                {isProcessing ? 'Processing...' : 'Place Order'}
-                                            </button>
-                                        )}
+                                        <button
+                                            type="submit"
+                                            disabled={isProcessing}
+                                            className="w-full rounded-md bg-primary px-4 py-3 text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                        >
+                                            {isProcessing ? 'Processing...' : 'Place Order'}
+                                        </button>
                                     </div>
                                 </form>
                             </CardContent>

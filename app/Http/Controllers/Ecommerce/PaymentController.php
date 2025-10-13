@@ -22,50 +22,7 @@ use Midtrans\Snap;
 
 class PaymentController extends Controller
 {
-    public function index(Order $order)
-    {
-        // Set Midtrans configuration
-        Config::$serverKey = config('midtrans.server_key');
-        Config::$isProduction = config('midtrans.is_production');
-        Config::$isSanitized = config('midtrans.is_sanitized');
-        Config::$is3ds = config('midtrans.is_3ds');
-
-        $billingData = session('checkout.billing');
-
-        $orderItems = $order->orderItems;
-        $item_details = [];
-        foreach ($orderItems as $item) {
-            $item_details[] = [
-                'id' => $item->product_id,
-                'price' => round($item->unit_price * $item->content * 1.11),
-                'quantity' => $item->quantity,
-                'name' => $item->product->name,
-            ];
-        }
-
-        $params = [
-            'transaction_details' => [
-                'order_id' => $order->transaction_number,
-                'gross_amount' => $order->total_price,
-            ],
-            'customer_details' => [
-                'first_name' => $billingData['first_name'] ?? $order->user->first_name,
-                'email' => $billingData['email'] ?? $order->user->email,
-                'phone' => $billingData['phone'] ?? $order->user->phone,
-            ],
-            'item_details' => $item_details
-        ];
-
-        try {
-            $snapToken = Snap::getSnapToken($params);
-            return response()->json(['token' => $snapToken]);
-
-        } catch (\Exception $e) {
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
-    }
-
-    public function processPaymentGateway(Request $request, CartService $cartService, DigikopTransactionService $transactionService)
+    public function index(Request $request, CartService $cartService, DigikopTransactionService $transactionService)
     {
         // Check if billing information exists in session
         if (!session('checkout.billing')) {
@@ -75,29 +32,76 @@ class PaymentController extends Controller
         // Get cart items from session (set during checkout process)
         $cartItems = $request->input('cart', []);
 
-        Log::debug('Cart items for payment gateway process:', $cartItems);
+        //        Log::debug('Cart items for payment process:', $cartItems);
 
         if (empty($cartItems)) {
             return redirect()->route('cart')->with('error', 'Your cart is empty.');
         }
 
-        $request->validate([
-            'source_of_fund' => 'required|string|',
-            'cart' => 'required|array|min:1',
-        ]);
+        // Add cart items to request so CartService can process them
+        $request->merge(['cart_items' => $cartItems]);
+
+        //        Log::info('Cart items for order placement:', $cartItems);
+
+        // Temporarily override CartService's getCartItems method
+        //        $originalGetCartItems = function() use ($cartItems) {
+        //            return $cartItems;
+        //        };
+
+        // Use reflection to temporarily override the method
+        //        $cartServiceReflection = new \ReflectionClass($cartService);
+        //        $getCartItemsMethod = $cartServiceReflection->getMethod('getCartItems');
+
+        // Since we can't directly override the method, we'll pass the cart items differently
+        // Let's create a temporary solution by modifying how we call the service
+
+        // Determine if it's a payment gateway request by checking the route name
+        $isPaymentGateway = $request->route()->getName() === 'payment.gateway';
+        
+        // Validate the request differently based on whether it's a payment gateway request
+        if ($isPaymentGateway) {
+            $request->validate([
+                'source_of_fund' => 'required|string|',
+                'cart' => 'required|array|min:1',
+            ]);
+            // Set default payment type for payment gateway
+            $paymentType = 'va';
+            $paymentMethod = 'payment-gateway';
+        } else {
+            $request->validate([
+                'source_of_fund' => 'required|string|',
+                'payment_type' => 'required|string|',
+                'cart' => 'required|array|min:1',
+            ]);
+            $paymentType = $request->payment_type;
+            $paymentMethod = 'mandiri'; // Default for non-payment gateway
+        }
 
         try {
+            // Validate credit limit before processing payment
+            $user = auth()->user();
+
             // Calculate total amount from localStorage cart items
             $totalAmount = array_sum(array_map(function ($item) {
                 return $item['price'] * $item['quantity'] * $item['content'];
             }, $cartItems));
+
+            // Validate credit limit using tenant_id
+            // $creditValidation = $transactionService->validateCreditLimit($user->tenant_id, $totalAmount);
+
+            // if (!$creditValidation['valid']) {
+            //     // Handle credit limit exceeded
+            //     throw ValidationException::withMessages([
+            //         'credit_limit_error' => $creditValidation['message'],
+            //     ]);
+            // }
 
             \DB::beginTransaction();
 
             $billingData = session('checkout.billing');
             $shippingData = session('checkout.shipping');
 
-            // Create the order with payment_type as 'va' (Virtual Account) for payment gateway
+            // Create the order
             $order = Order::create([
                 'transaction_number' => Order::generateTransactionNumber(),
                 'user_id' => auth()->id(),
@@ -106,9 +110,9 @@ class PaymentController extends Controller
                 'status' => OrderStatusEnum::CREATED->value,
                 'account_no' => auth()->user()->userProfile->bank_account['nomor_rekening'] ?? '', // This would need to be set based on your business logic
                 'account_bank' => auth()->user()->userProfile->bank_account['nomor_rekening'] ?? '', // This would need to be set based on your business logic
-                'payment_type' => 'va', // Virtual Account for payment gateway
-                'payment_method' => 'midtrans', // Specific to payment gateway
-                'va_number' => '', // Will be filled by Midtrans later
+                'payment_type' => $paymentType, // Use the determined payment type
+                'payment_method' => $paymentMethod, // Use the appropriate payment method
+                'va_number' => auth()->user()->apotek->bankAccount->account_number ?? '0000000000000', // No Rek KFA -> branch
                 'subtotal' => $totalAmount,
                 'tax_amount' => $totalAmount * 0.11, // You can calculate tax based on your business logic
                 'shipping_amount' => 0, // You can calculate shipping based on your business logic
@@ -169,10 +173,58 @@ class PaymentController extends Controller
                 }
             }
 
-            \DB::commit();
+            // For payment gateway, prepare Midtrans and redirect to payment page
+            if ($isPaymentGateway) {
+                // Set Midtrans configuration
+                Config::$serverKey = config('midtrans.server_key');
+                Config::$isProduction = config('midtrans.is_production');
+                Config::$isSanitized = config('midtrans.is_sanitized');
+                Config::$is3ds = config('midtrans.is_3ds');
 
-            // Redirect to the payment page to generate snap token
-            return redirect()->route('ecommerce.paytest', $order->id)->with('success', 'Order placed successfully, redirecting to payment gateway!');
+                $orderItems = $order->orderItems;
+                $item_details = [];
+                foreach ($orderItems as $item) {
+                    $item_details[] = [
+                        'id' => $item->product_id,
+                        'price' => round($item->unit_price * $item->content * 1.11),
+                        'quantity' => $item->quantity,
+                        'name' => $item->product->name,
+                    ];
+                }
+
+                $params = [
+                    'transaction_details' => [
+                        'order_id' => $order->transaction_number,
+                        'gross_amount' => $order->total_price,
+                    ],
+                    'customer_details' => [
+                        'first_name' => $billingData['first_name'] ?? $order->user->first_name,
+                        'email' => $billingData['email'] ?? $order->user->email,
+                        'phone' => $billingData['phone'] ?? $order->user->phone,
+                    ],
+                    'item_details' => $item_details
+                ];
+                $snapToken = Snap::getSnapToken($params);
+
+                \DB::commit();
+
+                return Inertia::render('ecommerce/paytest', [
+                    'orderId' => $order->id,
+                    'snapToken' => $snapToken,
+                    'transaction_number' => $order->transaction_number,
+                    'order' => $order
+                ]);
+            } else {
+                // For non-payment gateway (credit co-op), complete the order immediately
+                \DB::commit();
+
+                // Clear cart and checkout data from session after successful payment
+                // Log::debug("message", session('cart'));
+                // // session()->forget(['cart', 'checkout.billing', 'checkout.shipping']);
+
+                // Redirect to order confirmation page
+                return redirect()->route('order.complete', $order->id)->with('success', 'Order placed successfully!');
+            }
         } catch (ValidationException $e) {
             // Re-throw validation exceptions as they are already properly formatted
             \DB::rollBack();
@@ -180,7 +232,7 @@ class PaymentController extends Controller
         } catch (\Exception $e) {
             \DB::rollBack();
 
-            \Log::error('Order creation for payment gateway failed with exception: ' . $e->getMessage());
+            \Log::error('Order creation failed with exception: ' . $e->getMessage());
 
             // Check if this is a pharmacy mapping error
             if (
@@ -200,7 +252,7 @@ class PaymentController extends Controller
         } catch (\Throwable $e) {
             \DB::rollBack();
 
-            \Log::error('Order creation for payment gateway failed with throwable: ' . $e->getMessage());
+            \Log::error('Order creation failed with throwable: ' . $e->getMessage());
 
             // Check if this is specifically a credit limit issue
             if (strpos($e->getMessage(), 'credit') !== false) {
@@ -265,5 +317,54 @@ class PaymentController extends Controller
     public function generateSnapToken(Order $order)
     {
         return $this->index($order);
+    }
+    
+    // Method to handle the payment test page for payment gateway orders
+    public function processPaymentGateway(Order $order)
+    {
+        // You can implement any specific logic needed for payment test page here
+        // For now, this can just return the same view as the index method would for payment gateway
+        
+        $order->load('orderItems.product'); // Load related data if needed
+        
+        // Set Midtrans configuration
+        Config::$serverKey = config('midtrans.server_key');
+        Config::$isProduction = config('midtrans.is_production');
+        Config::$isSanitized = config('midtrans.is_sanitized');
+        Config::$is3ds = config('midtrans.is_3ds');
+
+        $billingData = session('checkout.billing') ?? [];
+        
+        $orderItems = $order->orderItems;
+        $item_details = [];
+        foreach ($orderItems as $item) {
+            $item_details[] = [
+                'id' => $item->product_id,
+                'price' => round($item->unit_price * $item->content * 1.11),
+                'quantity' => $item->quantity,
+                'name' => $item->product->name,
+            ];
+        }
+
+        $params = [
+            'transaction_details' => [
+                'order_id' => $order->transaction_number,
+                'gross_amount' => $order->total_price,
+            ],
+            'customer_details' => [
+                'first_name' => $billingData['first_name'] ?? $order->user->first_name,
+                'email' => $billingData['email'] ?? $order->user->email,
+                'phone' => $billingData['phone'] ?? $order->user->phone,
+            ],
+            'item_details' => $item_details
+        ];
+        $snapToken = Snap::getSnapToken($params);
+
+        return Inertia::render('ecommerce/paytest', [
+            'orderId' => $order->id,
+            'snapToken' => $snapToken,
+            'transaction_number' => $order->transaction_number,
+            'order' => $order
+        ]);
     }
 }

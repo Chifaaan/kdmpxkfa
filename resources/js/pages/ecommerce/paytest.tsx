@@ -25,7 +25,7 @@ interface PaytestProps extends PageProps {
 
 // --- The Refactored Paytest Component ---
 
-const Paytest: React.FC<PaytestProps> = ({ snapToken, order, clientKey, isProduction, auth, transaction_number }) => {
+const Paytest: React.FC<PaytestProps> = ({ snapToken, order, clientKey, isProduction, auth }) => {
     const [status, setStatus] = useState<'idle' | 'success' | 'pending' | 'error' | 'closed'>('idle');
     const [paymentResult, setPaymentResult] = useState<MidtransResult | null>(null);
 
@@ -112,7 +112,7 @@ const Paytest: React.FC<PaytestProps> = ({ snapToken, order, clientKey, isProduc
             <Head title="Complete Your Payment" />
             <div className="container mx-auto py-8">
                 <div className="mx-auto max-w-lg rounded-lg bg-white p-6 shadow-md">
-                    <h1 className="text-2xl font-bold">Payment for Order #{transaction_number}</h1>
+                    <h1 className="text-2xl font-bold">Payment for Order #{order.transaction_number}</h1>
                     <p className="text-lg text-gray-600">Total Amount: ${order.total_price.toFixed(2)}</p>
 
                     <div className="mt-6">
