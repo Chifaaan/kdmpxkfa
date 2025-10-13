@@ -82,7 +82,11 @@ const OrderDetailCard: React.FC<OrderDetailCardProps> = ({ order, statusColors, 
                         {showItems.map((item) => (
                             <div key={item.id} className="flex items-center gap-4">
                                 {item.product.image ? (
-                                    <img src={item.product.image[0] ?? '/products/Placeholder_Medicine.png'} alt={item.product.name} className="h-14 w-14 rounded-lg object-cover" />
+                                    <img
+                                        src={item.product.image[0] ?? '/products/Placeholder_Medicine.png'}
+                                        alt={item.product.name}
+                                        className="h-14 w-14 rounded-lg object-cover"
+                                    />
                                 ) : (
                                     <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-muted">
                                         <ShoppingBag className="h-6 w-6 text-muted-foreground" />
@@ -112,11 +116,20 @@ const OrderDetailCard: React.FC<OrderDetailCardProps> = ({ order, statusColors, 
                     {/* --- `calculatedTotal` IS NOW ACCESSIBLE HERE --- */}
                     <p className="text-base font-semibold text-card-foreground">{currency(order.total_delivered ?? order.total_price)}</p>
                 </div>
-                <Link href={route('history.details', order.transaction_number)} className="w-full sm:w-auto">
-                    <Button size="sm" className="w-full">
-                        Lihat Detail Lengkap
-                    </Button>
-                </Link>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                    {/* {(order.status.toLowerCase() === 'pending' || order.status.toLowerCase() === 'unpaid' || order.status.toLowerCase() === 'awaiting_payment') ? (
+                        <Link href={route('checkout.payment', order.transaction_number)} className="w-full sm:w-auto">
+                            <Button size="sm" className="w-full bg-green-600 hover:bg-green-700">
+                                Continue Payment
+                            </Button>
+                        </Link>
+                    ) : null} */}
+                    <Link href={route('history.details', order.transaction_number)} className="w-full sm:w-auto">
+                        <Button variant="outline" size="sm" className="w-full">
+                            Lihat Detail Lengkap
+                        </Button>
+                    </Link>
+                </div>
             </CardFooter>
         </Card>
     );
@@ -137,7 +150,18 @@ export default function History() {
 
     const sortedAndFilteredOrders = useMemo(() => {
         const filtered = orders.filter((order) => {
-            const matchesStatus = filterStatus === 'Semua' || order.status === filterStatus;
+            let matchesStatus = false;
+
+            if (filterStatus === 'Semua') {
+                matchesStatus = true;
+            } else if (filterStatus === 'Pending') {
+                // Check for various possible pending status values
+                const lowerStatus = order.status.toLowerCase();
+                matchesStatus = lowerStatus === 'pending' || lowerStatus === 'unpaid' || lowerStatus === 'awaiting_payment';
+            } else {
+                matchesStatus = order.status === filterStatus;
+            }
+
             const matchesDate = !selectedDate || new Date(order.created_at).toDateString() === selectedDate.toDateString();
             const matchesSearch =
                 searchQuery.trim() === '' ||
@@ -194,6 +218,7 @@ export default function History() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="Semua">Semua</SelectItem>
+                                    <SelectItem value="Pending">Pending</SelectItem>
                                     {Object.entries(statusFilters).map(([key, value]) => (
                                         <SelectItem key={key} value={key}>
                                             {value}
@@ -206,6 +231,7 @@ export default function History() {
                             <Tabs value={filterStatus} onValueChange={setFilterStatus}>
                                 <TabsList>
                                     <TabsTrigger value="Semua">Semua</TabsTrigger>
+                                    <TabsTrigger value="Pending">Pending</TabsTrigger>
                                     {Object.entries(statusFilters).map(([key, value]) => (
                                         <TabsTrigger key={key} value={key}>
                                             {value}

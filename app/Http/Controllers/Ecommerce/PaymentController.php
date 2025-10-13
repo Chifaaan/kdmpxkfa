@@ -57,7 +57,7 @@ class PaymentController extends Controller
 
         // Determine if it's a payment gateway request by checking the route name
         $isPaymentGateway = $request->route()->getName() === 'payment.gateway';
-        
+
         // Validate the request differently based on whether it's a payment gateway request
         if ($isPaymentGateway) {
             $request->validate([
@@ -107,7 +107,7 @@ class PaymentController extends Controller
                 'user_id' => auth()->id(),
                 'tenant_id' => auth()->user()->tenant_id,
                 'source_of_fund' => $request->source_of_fund,
-                'status' => OrderStatusEnum::CREATED->value,
+                'status' => OrderStatusEnum::PENDING->value,
                 'account_no' => auth()->user()->userProfile->bank_account['nomor_rekening'] ?? '', // This would need to be set based on your business logic
                 'account_bank' => auth()->user()->userProfile->bank_account['nomor_rekening'] ?? '', // This would need to be set based on your business logic
                 'payment_type' => $paymentType, // Use the determined payment type
@@ -205,6 +205,9 @@ class PaymentController extends Controller
                     'item_details' => $item_details
                 ];
                 $snapToken = Snap::getSnapToken($params);
+
+                // Save the snap token to the order
+                $order->update(['snap_token' => $snapToken]);
 
                 \DB::commit();
 
@@ -313,20 +316,57 @@ class PaymentController extends Controller
         return response()->json(['status' => 'OK']);
     }
 
-    // Alias method for generateSnapToken to maintain backward compatibility
+    // Method to generate a new snap token for an existing order
     public function generateSnapToken(Order $order)
     {
-        return $this->index($order);
+        // Set Midtrans configuration
+        Config::$serverKey = config('midtrans.server_key');
+        Config::$isProduction = config('midtrans.is_production');
+        Config::$isSanitized = config('midtrans.is_sanitized');
+        Config::$is3ds = config('midtrans.is_3ds');
+
+        $orderItems = $order->orderItems;
+        $item_details = [];
+        foreach ($orderItems as $item) {
+            $item_details[] = [
+                'id' => $item->product_id,
+                'price' => round($item->unit_price * $item->content * 1.11),
+                'quantity' => $item->quantity,
+                'name' => $item->product->name,
+            ];
+        }
+
+        $params = [
+            'transaction_details' => [
+                'order_id' => $order->transaction_number,
+                'gross_amount' => $order->total_price,
+            ],
+            'customer_details' => [
+                'first_name' => $order->user->first_name ?? $order->billing_name,
+                'email' => $order->user->email ?? $order->billing_email,
+                'phone' => $order->user->phone ?? $order->billing_phone,
+            ],
+            'item_details' => $item_details
+        ];
+        $snapToken = Snap::getSnapToken($params);
+
+        // Save the snap token to the order
+        $order->update(['snap_token' => $snapToken]);
+
+        return response()->json([
+            'snapToken' => $snapToken,
+            'transaction_number' => $order->transaction_number,
+        ]);
     }
-    
+
     // Method to handle the payment test page for payment gateway orders
     public function processPaymentGateway(Order $order)
     {
         // You can implement any specific logic needed for payment test page here
         // For now, this can just return the same view as the index method would for payment gateway
-        
+
         $order->load('orderItems.product'); // Load related data if needed
-        
+
         // Set Midtrans configuration
         Config::$serverKey = config('midtrans.server_key');
         Config::$isProduction = config('midtrans.is_production');
@@ -334,7 +374,7 @@ class PaymentController extends Controller
         Config::$is3ds = config('midtrans.is_3ds');
 
         $billingData = session('checkout.billing') ?? [];
-        
+
         $orderItems = $order->orderItems;
         $item_details = [];
         foreach ($orderItems as $item) {
@@ -359,6 +399,9 @@ class PaymentController extends Controller
             'item_details' => $item_details
         ];
         $snapToken = Snap::getSnapToken($params);
+
+        // Save the snap token to the order
+        $order->update(['snap_token' => $snapToken]);
 
         return Inertia::render('ecommerce/paytest', [
             'orderId' => $order->id,

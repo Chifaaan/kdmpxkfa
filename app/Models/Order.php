@@ -47,6 +47,7 @@ class Order extends Model
         'delivered_at',
         'customer_notes',
         'admin_notes',
+        'snap_token',
     ];
 
     protected $casts = [

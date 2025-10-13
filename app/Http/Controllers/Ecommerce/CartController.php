@@ -444,6 +444,9 @@ class CartController extends Controller
             abort(403);
         }
 
+        if ($order->status === 'pending') {
+            $order->update(['status' => 'new']);
+        }
         // Load order items with product relationship
         $order->load('orderItems.product');
 

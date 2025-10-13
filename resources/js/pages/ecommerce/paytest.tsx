@@ -36,7 +36,7 @@ const Paytest: React.FC<PaytestProps> = ({ snapToken, order, clientKey, isProduc
         setPaymentResult(result);
         setStatus('success');
         toast.success('Payment successful! Redirecting...');
-        setTimeout(() => router.get(route('ecommerce.order.show', order.id)), 3000);
+        setTimeout(() => router.get(route('order.complete', order.id)), 3000);
     };
 
     const handlePending = (result: MidtransResult) => {
