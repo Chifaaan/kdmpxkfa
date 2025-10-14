@@ -10,6 +10,7 @@ enum OrderStatusEnum: string
     case RECEIVED = 'diterima';
     case PENDING = 'pending';
     case CANCELED = 'dibatalkan';
+    case EXPIRED = 'expired';
 
     public function label(): string
     {
@@ -20,6 +21,7 @@ enum OrderStatusEnum: string
             self::RECEIVED => 'Diterima',
             self::PENDING => 'Pending',
             self::CANCELED => 'Dibatalkan',
+            self::EXPIRED => 'Expired',
         };
     }
 
@@ -30,7 +32,9 @@ enum OrderStatusEnum: string
             self::PROCESS => 'text-amber-600 bg-amber-100 dark:text-amber-200 dark:bg-amber-900/40',
             self::DELIVERY => 'text-sky-600 bg-sky-100 dark:text-sky-200 dark:bg-sky-900/40',
             self::RECEIVED => 'text-emerald-600 bg-emerald-100 dark:text-emerald-200 dark:bg-emerald-900/40',
+            self::PENDING => 'text-yellow-600 bg-yellow-100 dark:text-yellow-200 dark:bg-yellow-900/40',
             self::CANCELED => 'text-rose-600 bg-rose-100 dark:text-rose-200 dark:bg-rose-900/40',
+            self::EXPIRED => 'text-gray-600 bg-gray-100 dark:text-gray-200 dark:bg-gray-900/40',
         };
     }
 
@@ -41,7 +45,9 @@ enum OrderStatusEnum: string
             self::PROCESS->value => 'text-amber-600 bg-amber-100 dark:text-amber-200 dark:bg-amber-900/40',
             self::DELIVERY->value => 'text-sky-600 bg-sky-100 dark:text-sky-200 dark:bg-sky-900/40',
             self::RECEIVED->value => 'text-emerald-600 bg-emerald-100 dark:text-emerald-200 dark:bg-emerald-900/40',
+            self::PENDING->value => 'text-yellow-600 bg-yellow-100 dark:text-yellow-200 dark:bg-yellow-900/40',
             self::CANCELED->value => 'text-rose-600 bg-rose-100 dark:text-rose-200 dark:bg-rose-900/40',
+            self::EXPIRED->value => 'text-gray-600 bg-gray-100 dark:text-gray-200 dark:bg-gray-900/40',
         ];
     }
 

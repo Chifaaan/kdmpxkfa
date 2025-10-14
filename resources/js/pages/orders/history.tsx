@@ -1,5 +1,5 @@
 import HeaderLayout from '@/layouts/header-layout';
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import React, { useEffect, useMemo, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -10,10 +10,28 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
+import PaymentButton, { type MidtransResult } from '@/components/PaymentButton';
 import { cn, currency } from '@/lib/utils';
 import type { BreadcrumbItem, Order, OrderItem } from '@/types';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon, CreditCard, Filter, Info, ShoppingBag } from 'lucide-react';
+
+// Type definition for Midtrans window object
+declare global {
+    interface Window {
+        snap?: {
+            pay: (
+                snapToken: string,
+                options?: {
+                    onSuccess?: (result: MidtransResult) => void;
+                    onPending?: (result: MidtransResult) => void;
+                    onError?: (result: MidtransResult) => void;
+                    onClose?: () => void;
+                },
+            ) => void;
+        };
+    }
+}
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
@@ -47,6 +65,37 @@ const OrderDetailCard: React.FC<OrderDetailCardProps> = ({ order, statusColors, 
             moreCount: additionalCount,
         };
     }, [order]);
+
+    // Payment configuration - these should come from your application config
+    const clientKey = import.meta.env.VITE_MIDTRANS_CLIENT_KEY || '';
+    const isProduction = import.meta.env.VITE_MIDTRANS_PRODUCTION === 'true';
+
+    // Payment handler functions
+    const handleSuccess = (result: MidtransResult) => {
+        console.log('Payment Success:', result);
+        setTimeout(() => router.get(route('order.complete', order.id)), 3000);
+        // Update the order status or redirect to success page
+        // You can add logic here to refresh the order data
+        // alert(`Payment successful! Transaction ID: ${result.transaction_id}`);
+    };
+
+    const handlePending = (result: MidtransResult) => {
+        console.log('Payment Pending:', result);
+        // Handle pending payment - might want to update UI or redirect
+        // alert(`Payment is pending! Transaction ID: ${result.transaction_id}`);
+    };
+
+    const handleError = (result: MidtransResult) => {
+        console.error('Payment Error:', result);
+        // Handle error - show error message to user
+        // alert(`Payment failed: ${result.status_message}`);
+    };
+
+    const handleClose = () => {
+        console.log('Payment popup closed by user');
+        // Handle popup close - maybe show a message or take some action
+        // alert('Payment popup was closed. Your order is still pending.');
+    };
 
     return (
         <Card className="sticky top-24">
@@ -117,13 +166,20 @@ const OrderDetailCard: React.FC<OrderDetailCardProps> = ({ order, statusColors, 
                     <p className="text-base font-semibold text-card-foreground">{currency(order.total_delivered ?? order.total_price)}</p>
                 </div>
                 <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-                    {/* {(order.status.toLowerCase() === 'pending' || order.status.toLowerCase() === 'unpaid' || order.status.toLowerCase() === 'awaiting_payment') ? (
-                        <Link href={route('checkout.payment', order.transaction_number)} className="w-full sm:w-auto">
-                            <Button size="sm" className="w-full bg-green-600 hover:bg-green-700">
-                                Continue Payment
-                            </Button>
-                        </Link>
-                    ) : null} */}
+                    {order.status.toLowerCase() === 'pending' && order.snap_token ? (
+                        <PaymentButton
+                            snapToken={order.snap_token}
+                            clientKey={clientKey}
+                            isProduction={isProduction}
+                            onSuccess={handleSuccess}
+                            onPending={handlePending}
+                            onError={handleError}
+                            onClose={handleClose}
+                            className="w-full bg-green-600 text-white hover:bg-green-700"
+                        >
+                            Pay Now
+                        </PaymentButton>
+                    ) : null}
                     <Link href={route('history.details', order.transaction_number)} className="w-full sm:w-auto">
                         <Button variant="outline" size="sm" className="w-full">
                             Lihat Detail Lengkap
@@ -231,7 +287,6 @@ export default function History() {
                             <Tabs value={filterStatus} onValueChange={setFilterStatus}>
                                 <TabsList>
                                     <TabsTrigger value="Semua">Semua</TabsTrigger>
-                                    <TabsTrigger value="Pending">Pending</TabsTrigger>
                                     {Object.entries(statusFilters).map(([key, value]) => (
                                         <TabsTrigger key={key} value={key}>
                                             {value}

@@ -19,6 +19,7 @@ use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Midtrans\Config;
 use Midtrans\Snap;
+use App\Jobs\ExpireOrderJob;
 
 class PaymentController extends Controller
 {
@@ -32,7 +33,6 @@ class PaymentController extends Controller
         // Get cart items from session (set during checkout process)
         $cartItems = $request->input('cart', []);
 
-        //        Log::debug('Cart items for payment process:', $cartItems);
 
         if (empty($cartItems)) {
             return redirect()->route('cart')->with('error', 'Your cart is empty.');
@@ -40,20 +40,6 @@ class PaymentController extends Controller
 
         // Add cart items to request so CartService can process them
         $request->merge(['cart_items' => $cartItems]);
-
-        //        Log::info('Cart items for order placement:', $cartItems);
-
-        // Temporarily override CartService's getCartItems method
-        //        $originalGetCartItems = function() use ($cartItems) {
-        //            return $cartItems;
-        //        };
-
-        // Use reflection to temporarily override the method
-        //        $cartServiceReflection = new \ReflectionClass($cartService);
-        //        $getCartItemsMethod = $cartServiceReflection->getMethod('getCartItems');
-
-        // Since we can't directly override the method, we'll pass the cart items differently
-        // Let's create a temporary solution by modifying how we call the service
 
         // Determine if it's a payment gateway request by checking the route name
         $isPaymentGateway = $request->route()->getName() === 'payment.gateway';
@@ -85,16 +71,6 @@ class PaymentController extends Controller
             $totalAmount = array_sum(array_map(function ($item) {
                 return $item['price'] * $item['quantity'] * $item['content'];
             }, $cartItems));
-
-            // Validate credit limit using tenant_id
-            // $creditValidation = $transactionService->validateCreditLimit($user->tenant_id, $totalAmount);
-
-            // if (!$creditValidation['valid']) {
-            //     // Handle credit limit exceeded
-            //     throw ValidationException::withMessages([
-            //         'credit_limit_error' => $creditValidation['message'],
-            //     ]);
-            // }
 
             \DB::beginTransaction();
 
@@ -132,6 +108,12 @@ class PaymentController extends Controller
                 'shipping_zip' => $shippingData['zip'],
                 'customer_notes' => $billingData['notes'] ?? null,
             ]);
+
+            // ================================================================
+            // 2. DISPATCH THE DELAYED JOB
+            // This job will run in 1 minute and check if the order is still pending.
+            ExpireOrderJob::dispatch($order)->delay(now()->addMinutes(1));
+            // ================================================================
 
             // Create order items
             foreach ($cartItems as $cartItem) {
@@ -218,13 +200,7 @@ class PaymentController extends Controller
                     'order' => $order
                 ]);
             } else {
-                // For non-payment gateway (credit co-op), complete the order immediately
                 \DB::commit();
-
-                // Clear cart and checkout data from session after successful payment
-                // Log::debug("message", session('cart'));
-                // // session()->forget(['cart', 'checkout.billing', 'checkout.shipping']);
-
                 // Redirect to order confirmation page
                 return redirect()->route('order.complete', $order->id)->with('success', 'Order placed successfully!');
             }
@@ -285,6 +261,7 @@ class PaymentController extends Controller
     public function handleMidtransCallback(Request $request)
     {
         $notification = $request->all();
+        Log::info('Midtrans Notification Received:', $notification); // Good for debugging
 
         $order_id = $notification['order_id'];
         $transaction_status = $notification['transaction_status'];
@@ -293,121 +270,45 @@ class PaymentController extends Controller
         $order = Order::where('transaction_number', $order_id)->first();
 
         if (!$order) {
+            Log::warning("Midtrans callback for non-existent order: {$order_id}");
             return response()->json(['message' => 'Order not found'], 404);
         }
 
+        // --- NEW LOGIC TO UPDATE PAYMENT DETAILS ---
+        // We update payment details on any valid notification, not just final settlement.
+        if (isset($notification['payment_type'])) {
+            $order->payment_type = $notification['payment_type'];
+        }
+
+        // Capture VA number if it exists
+        if (isset($notification['va_numbers'][0]['va_number'])) {
+            $order->va_number = $notification['va_numbers'][0]['va_number'];
+        } elseif (isset($notification['permata_va_number'])) {
+            $order->va_number = $notification['permata_va_number'];
+        }
+        // You can add more for other payment types like biller_code for e-wallets etc.
+
+        // --- EXISTING LOGIC TO UPDATE STATUS ---
         // Update order status based on transaction status
         if ($transaction_status == 'capture') {
             if ($fraud_status == 'challenge') {
-                $order->update(['status' => 'challenged']);
+                $order->status = 'challenged';
             } else if ($fraud_status == 'accept') {
-                $order->update(['status' => 'paid']);
+                $order->status = 'paid';
             }
         } else if ($transaction_status == 'settlement') {
-            $order->update(['status' => 'paid']);
-        } else if ($transaction_status == 'cancel') {
-            $order->update(['status' => 'cancelled']);
+            $order->status = 'paid';
+        } else if ($transaction_status == 'cancel' || $transaction_status == 'deny' || $transaction_status == 'failure') {
+            $order->status = 'cancelled';
         } else if ($transaction_status == 'expire') {
-            $order->update(['status' => 'expired']);
+            $order->status = 'expired';
         } else if ($transaction_status == 'pending') {
-            $order->update(['status' => 'pending']);
+            $order->status = 'pending';
         }
+
+        // Save all the changes to the order
+        $order->save();
 
         return response()->json(['status' => 'OK']);
-    }
-
-    // Method to generate a new snap token for an existing order
-    public function generateSnapToken(Order $order)
-    {
-        // Set Midtrans configuration
-        Config::$serverKey = config('midtrans.server_key');
-        Config::$isProduction = config('midtrans.is_production');
-        Config::$isSanitized = config('midtrans.is_sanitized');
-        Config::$is3ds = config('midtrans.is_3ds');
-
-        $orderItems = $order->orderItems;
-        $item_details = [];
-        foreach ($orderItems as $item) {
-            $item_details[] = [
-                'id' => $item->product_id,
-                'price' => round($item->unit_price * $item->content * 1.11),
-                'quantity' => $item->quantity,
-                'name' => $item->product->name,
-            ];
-        }
-
-        $params = [
-            'transaction_details' => [
-                'order_id' => $order->transaction_number,
-                'gross_amount' => $order->total_price,
-            ],
-            'customer_details' => [
-                'first_name' => $order->user->first_name ?? $order->billing_name,
-                'email' => $order->user->email ?? $order->billing_email,
-                'phone' => $order->user->phone ?? $order->billing_phone,
-            ],
-            'item_details' => $item_details
-        ];
-        $snapToken = Snap::getSnapToken($params);
-
-        // Save the snap token to the order
-        $order->update(['snap_token' => $snapToken]);
-
-        return response()->json([
-            'snapToken' => $snapToken,
-            'transaction_number' => $order->transaction_number,
-        ]);
-    }
-
-    // Method to handle the payment test page for payment gateway orders
-    public function processPaymentGateway(Order $order)
-    {
-        // You can implement any specific logic needed for payment test page here
-        // For now, this can just return the same view as the index method would for payment gateway
-
-        $order->load('orderItems.product'); // Load related data if needed
-
-        // Set Midtrans configuration
-        Config::$serverKey = config('midtrans.server_key');
-        Config::$isProduction = config('midtrans.is_production');
-        Config::$isSanitized = config('midtrans.is_sanitized');
-        Config::$is3ds = config('midtrans.is_3ds');
-
-        $billingData = session('checkout.billing') ?? [];
-
-        $orderItems = $order->orderItems;
-        $item_details = [];
-        foreach ($orderItems as $item) {
-            $item_details[] = [
-                'id' => $item->product_id,
-                'price' => round($item->unit_price * $item->content * 1.11),
-                'quantity' => $item->quantity,
-                'name' => $item->product->name,
-            ];
-        }
-
-        $params = [
-            'transaction_details' => [
-                'order_id' => $order->transaction_number,
-                'gross_amount' => $order->total_price,
-            ],
-            'customer_details' => [
-                'first_name' => $billingData['first_name'] ?? $order->user->first_name,
-                'email' => $billingData['email'] ?? $order->user->email,
-                'phone' => $billingData['phone'] ?? $order->user->phone,
-            ],
-            'item_details' => $item_details
-        ];
-        $snapToken = Snap::getSnapToken($params);
-
-        // Save the snap token to the order
-        $order->update(['snap_token' => $snapToken]);
-
-        return Inertia::render('ecommerce/paytest', [
-            'orderId' => $order->id,
-            'snapToken' => $snapToken,
-            'transaction_number' => $order->transaction_number,
-            'order' => $order
-        ]);
     }
 }

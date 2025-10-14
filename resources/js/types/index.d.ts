@@ -233,6 +233,7 @@ export interface Order {
     updated_at: string;
 
     user: User;
+    snap_token?: string;
 }
 
 export interface OrderItem {

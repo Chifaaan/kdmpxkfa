@@ -1,5 +1,6 @@
 // src/components/PaymentButton.tsx
 
+import { Button } from '@/components/ui/button';
 import React, { useEffect, useState } from 'react';
 
 // --- Type Definitions ---
@@ -143,9 +144,9 @@ const PaymentButton: React.FC<PaymentButtonProps> = ({
     const isButtonDisabled = disabled || !isSnapReady || isPaying;
 
     return (
-        <button onClick={handlePay} disabled={isButtonDisabled} className={className}>
+        <Button onClick={handlePay} disabled={isButtonDisabled} className={className}>
             {isPaying ? 'Processing...' : !isSnapReady ? 'Loading...' : children}
-        </button>
+        </Button>
     );
 };
 
