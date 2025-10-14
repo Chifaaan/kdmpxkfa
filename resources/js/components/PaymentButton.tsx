@@ -118,8 +118,32 @@ const PaymentButton: React.FC<PaymentButtonProps> = ({
         setIsPaying(true);
 
         window.snap.pay(snapToken, {
-            onSuccess: (result) => {
+            onSuccess: async (result) => {
                 setIsPaying(false);
+
+                // Send payment type to backend to update the order
+                try {
+                    const response = await fetch('/payment/update-payment-type', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                        },
+                        body: JSON.stringify({
+                            transaction_id: result.transaction_id,
+                            order_id: result.order_id,
+                            payment_type: result.payment_type,
+                        }),
+                    });
+
+                    if (!response.ok) {
+                        console.error('Failed to update payment type:', await response.text());
+                    }
+                } catch (error) {
+                    console.error('Error updating payment type:', error);
+                }
+
                 onSuccess(result);
             },
             onPending: (result) => {

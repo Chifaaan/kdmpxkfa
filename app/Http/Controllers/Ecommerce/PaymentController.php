@@ -311,4 +311,42 @@ class PaymentController extends Controller
 
         return response()->json(['status' => 'OK']);
     }
+    
+    public function updatePaymentType(Request $request)
+    {
+        $request->validate([
+            'transaction_id' => 'required|string',
+            'order_id' => 'required|string',
+            'payment_type' => 'required|string',
+        ]);
+
+        try {
+            // Find the order by transaction number (order_id from Midtrans)
+            $order = Order::where('transaction_number', $request->order_id)->first();
+
+            if (!$order) {
+                return response()->json(['error' => 'Order not found'], 404);
+            }
+
+            // Update the payment type
+            $order->payment_type = $request->payment_type;
+            $order->save();
+
+            return response()->json(['message' => 'Payment type updated successfully']);
+        } catch (\Exception $e) {
+            \Log::error('Failed to update payment type: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to update payment type'], 500);
+        }
+    }
+    
+    public function processPaymentGateway(Order $order)
+    {
+        // This method renders the payment page with the order and snap token
+        return Inertia::render('ecommerce/paytest', [
+            'orderId' => $order->id,
+            'snapToken' => $order->snap_token,
+            'transaction_number' => $order->transaction_number,
+            'order' => $order
+        ]);
+    }
 }
